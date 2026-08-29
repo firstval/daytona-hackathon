@@ -7,6 +7,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 
+from . import coder_agent
 from .config import load_settings
 from .daytona_sandbox import RepoSandbox
 from .llm_client import LLMClient
@@ -53,7 +54,15 @@ def get_pr_diff(pr_number: str) -> str:
     return result.stdout
 
 
-def run_checks(repo_dir: str, test_cmd: str, lint_cmd: str | None, settings) -> str:
+@dataclass
+class CheckRun:
+    output: str
+    suggested_diff: str | None = None
+    suggestion_verified: bool | None = None
+    suggestion_apply_error: str | None = None
+
+
+def run_checks_and_suggest_fix(repo_dir: str, test_cmd: str, lint_cmd: str | None, settings) -> CheckRun:
     with RepoSandbox(settings) as sandbox:
         sandbox.bootstrap(repo_dir)
         sections = []
@@ -65,7 +74,31 @@ def run_checks(repo_dir: str, test_cmd: str, lint_cmd: str | None, settings) -> 
             lint_result = sandbox.run(lint_cmd)
             sections.append(f"$ {lint_cmd}\nexit_code={lint_result.exit_code}\n{lint_result.output.strip()}")
 
-        return "\n\n".join(sections)
+        check_output = "\n\n".join(sections)
+        if test_result.ok:
+            return CheckRun(output=check_output)
+
+        # Tests are failing: ask the Coder model for a fix and verify it in
+        # this same sandbox before ever showing it to a human, so the
+        # comment can say "confirmed passing" rather than just guessing.
+        coder = LLMClient(
+            base_url=settings.nosana_coder_base_url,
+            api_key=settings.nosana_coder_api_key,
+            model=settings.nosana_coder_model,
+        )
+        context = sandbox.collect_context()
+        diff_text = coder_agent.propose_patch(coder, failing_output=test_result.output, repo_context=context)
+
+        apply_result = sandbox.apply_diff(diff_text)
+        if not apply_result.ok:
+            return CheckRun(
+                output=check_output,
+                suggested_diff=diff_text,
+                suggestion_apply_error=apply_result.output,
+            )
+
+        verify_result = sandbox.run(test_cmd)
+        return CheckRun(output=check_output, suggested_diff=diff_text, suggestion_verified=verify_result.ok)
 
 
 def request_review(client: LLMClient, diff_text: str, check_output: str) -> Review:
@@ -88,10 +121,10 @@ def request_review(client: LLMClient, diff_text: str, check_output: str) -> Revi
     )
 
 
-def format_comment(review: Review, model: str) -> str:
+def format_comment(review: Review, reviewer_model: str, checks: CheckRun, coder_model: str) -> str:
     verdict_badge = "✅ Approve" if review.verdict == "approve" else "⚠️ Request changes"
     lines = [
-        f"## 🤖 AutoFix Review ({model} via Nosana)",
+        f"## 🤖 AutoFix Review ({reviewer_model} via Nosana)",
         "",
         f"**Verdict:** {verdict_badge}",
         "",
@@ -108,9 +141,30 @@ def format_comment(review: Review, model: str) -> str:
             location = f" `{file}`" if file else ""
             lines.append(f"- **[{severity}]**{location}: {description}")
 
+    if checks.suggested_diff:
+        lines.append("")
+        if checks.suggestion_verified:
+            lines.append(
+                f"### Suggested fix ({coder_model} via Nosana)\n"
+                "Applied and re-run in the same sandbox - **tests passed** with this change:"
+            )
+        elif checks.suggestion_apply_error:
+            lines.append(
+                f"### Suggested fix ({coder_model} via Nosana, unverified)\n"
+                "This diff did not apply cleanly in the sandbox, so it has **not** been "
+                "confirmed to fix anything - treat it as a rough starting point:"
+            )
+        else:
+            lines.append(
+                f"### Suggested fix ({coder_model} via Nosana, unverified)\n"
+                "This diff applied cleanly but tests still failed afterwards - it may be "
+                "a partial fix:"
+            )
+        lines.append(f"```diff\n{checks.suggested_diff.strip()}\n```")
+
     lines.append("")
     lines.append(
-        "---\n*Generated automatically by a Nosana-hosted model reviewing real Daytona "
+        "---\n*Generated automatically by Nosana-hosted models reviewing real Daytona "
         "sandbox output (tests/lint). This is advisory only and does not block merging.*"
     )
     return "\n".join(lines)
@@ -137,14 +191,17 @@ def main() -> None:
     diff_text = get_pr_diff(pr_number)
 
     print(f"[pr-review] running checks in a Daytona sandbox: {test_cmd!r}")
-    check_output = run_checks(repo_dir, test_cmd, lint_cmd, settings)
-    print(check_output)
+    checks = run_checks_and_suggest_fix(repo_dir, test_cmd, lint_cmd, settings)
+    print(checks.output)
+    if checks.suggested_diff:
+        print(f"[pr-review] tests failed; coder-suggested fix (verified={checks.suggestion_verified}):")
+        print(checks.suggested_diff)
 
     print("[pr-review] requesting structured review from the Nosana-hosted model")
-    review = request_review(reviewer, diff_text, check_output)
+    review = request_review(reviewer, diff_text, checks.output)
     print(f"[pr-review] verdict={review.verdict}")
 
-    comment = format_comment(review, settings.nosana_critic_model)
+    comment = format_comment(review, settings.nosana_critic_model, checks, settings.nosana_coder_model)
     post_comment(pr_number, comment)
     print("[pr-review] posted review comment")
 
