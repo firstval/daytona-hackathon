@@ -165,7 +165,7 @@ def format_comment(review: Review, reviewer_model: str, checks: CheckRun, coder_
     lines.append("")
     lines.append(
         "---\n*Generated automatically by Nosana-hosted models reviewing real Daytona "
-        "sandbox output (tests/lint). This is advisory only and does not block merging.*"
+        "sandbox output (tests/lint). A \"request changes\" verdict fails this check.*"
     )
     return "\n".join(lines)
 
@@ -204,6 +204,10 @@ def main() -> None:
     comment = format_comment(review, settings.nosana_critic_model, checks, settings.nosana_coder_model)
     post_comment(pr_number, comment)
     print("[pr-review] posted review comment")
+
+    if review.verdict != "approve":
+        print(f"[pr-review] verdict={review.verdict!r} - failing the check")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

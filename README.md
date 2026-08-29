@@ -76,7 +76,7 @@ test command to try it on something else:
 .venv/Scripts/python -m autofix.cli --repo path/to/other/repo --test-cmd "pytest -q"
 ```
 
-## GitHub Actions: PR review (comment-only, advisory)
+## GitHub Actions: PR review
 
 A lighter alternative to the full loop above lives in
 [`.github/workflows/autofix-review.yml`](.github/workflows/autofix-review.yml),
@@ -94,8 +94,9 @@ backed by [`autofix/pr_review.py`](autofix/pr_review.py). It triggers on
    JSON review (summary, issues, verdict) and posts it as a PR comment via
    `gh pr comment`.
 
-It never fails the check or blocks merging on the model's verdict — purely
-advisory, by design.
+A "request changes" verdict fails this check (non-zero exit). The workflow
+itself doesn't merge or reject anything — to actually block merging on it,
+add it as a required status check under branch protection.
 
 **Setup:** push this repo to GitHub, then add these **repo secrets**
 (Settings → Secrets and variables → Actions → *Secrets*):
