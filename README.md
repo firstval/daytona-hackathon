@@ -46,7 +46,9 @@ Fill in `.env`:
   while only activating ~3B params per token, so it stays fast on shared GPU
   compute.
 - `NOSANA_CODER_API_KEY` — if your job requires one (some public endpoints don't).
-- `NOSANA_CODER_MODEL` — the exact model tag Ollama pulled, e.g. `qwen3.6:35b-a3b`.
+- `NOSANA_CODER_MODEL` — the exact model tag Ollama pulled, e.g.
+  `qwen3.6:35b-a3b-q8_0` (note the quantization suffix — the tag shown in the
+  Nosana dashboard dropdown, like "35B Model", isn't the literal pull tag).
   Confirm with `curl <NOSANA_CODER_BASE_URL>/models` after deploying; the
   Hugging Face-style name won't match Ollama's OpenAI-compat API.
 - `NOSANA_CRITIC_BASE_URL`/`NOSANA_CRITIC_API_KEY`/`NOSANA_CRITIC_MODEL` —
