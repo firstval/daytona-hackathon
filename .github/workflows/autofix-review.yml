@@ -1,0 +1,43 @@
+name: AutoFix PR Review
+
+# Comment-only, advisory review: never fails/blocks the PR on the model's
+# verdict. Runs a real test (and optional lint) pass inside a Daytona
+# sandbox, then asks a Nosana-hosted model for a structured review of the
+# diff plus that sandbox output, and posts it as a PR comment.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run AutoFix PR review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_DIR: sample_repo
+          AUTOFIX_TEST_CMD: "pytest -q"
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+          DAYTONA_API_URL: ${{ vars.DAYTONA_API_URL }}
+          DAYTONA_TARGET: ${{ vars.DAYTONA_TARGET }}
+          NOSANA_CODER_BASE_URL: ${{ secrets.NOSANA_CODER_BASE_URL }}
+          NOSANA_CODER_API_KEY: ${{ secrets.NOSANA_CODER_API_KEY }}
+          NOSANA_CODER_MODEL: ${{ vars.NOSANA_CODER_MODEL }}
+          NOSANA_CRITIC_BASE_URL: ${{ secrets.NOSANA_CRITIC_BASE_URL }}
+          NOSANA_CRITIC_API_KEY: ${{ secrets.NOSANA_CRITIC_API_KEY }}
+          NOSANA_CRITIC_MODEL: ${{ vars.NOSANA_CRITIC_MODEL }}
+        run: python -m autofix.pr_review
