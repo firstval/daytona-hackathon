@@ -7,6 +7,8 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 
+from openai import APIError
+
 from . import coder_agent
 from .config import load_settings
 from .daytona_sandbox import RepoSandbox
@@ -60,6 +62,7 @@ class CheckRun:
     suggested_diff: str | None = None
     suggestion_verified: bool | None = None
     suggestion_apply_error: str | None = None
+    coder_error: str | None = None
 
 
 def run_checks_and_suggest_fix(repo_dir: str, test_cmd: str, lint_cmd: str | None, settings) -> CheckRun:
@@ -87,7 +90,10 @@ def run_checks_and_suggest_fix(repo_dir: str, test_cmd: str, lint_cmd: str | Non
             model=settings.nosana_coder_model,
         )
         context = sandbox.collect_context()
-        diff_text = coder_agent.propose_patch(coder, failing_output=test_result.output, repo_context=context)
+        try:
+            diff_text = coder_agent.propose_patch(coder, failing_output=test_result.output, repo_context=context)
+        except APIError as e:
+            return CheckRun(output=check_output, coder_error=str(e))
 
         apply_result = sandbox.apply_diff(diff_text)
         if not apply_result.ok:
@@ -161,6 +167,14 @@ def format_comment(review: Review, reviewer_model: str, checks: CheckRun, coder_
                 "a partial fix:"
             )
         lines.append(f"```diff\n{checks.suggested_diff.strip()}\n```")
+    elif checks.coder_error:
+        lines.append("")
+        lines.append(
+            f"### Suggested fix unavailable\n"
+            f"The Coder model ({coder_model} via Nosana) didn't respond - likely a "
+            f"temporary issue with that Nosana job, not with this PR:\n"
+            f"```\n{checks.coder_error.strip()}\n```"
+        )
 
     lines.append("")
     lines.append(
@@ -198,7 +212,20 @@ def main() -> None:
         print(checks.suggested_diff)
 
     print("[pr-review] requesting structured review from the Nosana-hosted model")
-    review = request_review(reviewer, diff_text, checks.output)
+    try:
+        review = request_review(reviewer, diff_text, checks.output)
+    except APIError as e:
+        print(f"[pr-review] Critic model unavailable: {e}")
+        post_comment(
+            pr_number,
+            "## 🤖 AutoFix Review\n\n"
+            f"**Could not complete the review** - the Critic model "
+            f"({settings.nosana_critic_model} via Nosana) didn't respond:\n"
+            f"```\n{e}\n```\n"
+            "This is a temporary issue with that Nosana job, not with this PR. "
+            "Re-run the check once it recovers.",
+        )
+        sys.exit(1)
     print(f"[pr-review] verdict={review.verdict}")
 
     comment = format_comment(review, settings.nosana_critic_model, checks, settings.nosana_coder_model)
