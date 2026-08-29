@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoFix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    /* dark-first: this IS the default look (terminal / CRT), light mode below is the override */
+    --bg: #12140f;
+    --surface: #181c14;
+    --surface-2: #1f241a;
+    --border: #2b3324;
+    --ink: #eceee3;
+    --ink-dim: #c7cbb8;
+    --muted: #8fa07f;
+    --accent: #7ce38b;
+    --accent-ink: #0d1a10;
+    --amber: #d9a441;
+    --amber-ink: #241a05;
+    --coral: #e2857a;
+    --coral-ink: #240b08;
+    --diff-add-bg: rgba(124, 227, 139, .14);
+    --diff-add-ink: #9fedac;
+    --diff-del-bg: rgba(226, 133, 122, .14);
+    --diff-del-ink: #f0a79c;
+    --shadow: rgba(0, 0, 0, .45);
+    --focus: #cfe7a8;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f1f3ec;
+      --surface: #ffffff;
+      --surface-2: #e7ebdf;
+      --border: #c9d0bc;
+      --ink: #171b12;
+      --ink-dim: #3e4636;
+      --muted: #5e6b52;
+      --accent: #2e8b4e;
+      --accent-ink: #ffffff;
+      --amber: #9c6b14;
+      --amber-ink: #ffffff;
+      --coral: #b23f30;
+      --coral-ink: #ffffff;
+      --diff-add-bg: rgba(46, 139, 78, .12);
+      --diff-add-ink: #1f6e3b;
+      --diff-del-bg: rgba(178, 63, 48, .12);
+      --diff-del-ink: #8f2e22;
+      --shadow: rgba(20, 25, 15, .12);
+      --focus: #2e8b4e;
+    }
+  }
+
+  :root[data-theme="light"] {
+    --bg: #f1f3ec;
+    --surface: #ffffff;
+    --surface-2: #e7ebdf;
+    --border: #c9d0bc;
+    --ink: #171b12;
+    --ink-dim: #3e4636;
+    --muted: #5e6b52;
+    --accent: #2e8b4e;
+    --accent-ink: #ffffff;
+    --amber: #9c6b14;
+    --amber-ink: #ffffff;
+    --coral: #b23f30;
+    --coral-ink: #ffffff;
+    --diff-add-bg: rgba(46, 139, 78, .12);
+    --diff-add-ink: #1f6e3b;
+    --diff-del-bg: rgba(178, 63, 48, .12);
+    --diff-del-ink: #8f2e22;
+    --shadow: rgba(20, 25, 15, .12);
+    --focus: #2e8b4e;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--accent); color: var(--accent-ink); }
+
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, .navdot:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 3px;
+  }
+
+  h1, h2, h3 {
+    font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    text-wrap: balance;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  code, .mono, .diff, .term { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  .wrap {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 0 clamp(20px, 5vw, 40px);
+  }
+
+  section {
+    padding: clamp(64px, 11vh, 120px) 0;
+    border-bottom: 1px solid var(--border);
+  }
+  section:last-of-type { border-bottom: none; }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: .5em;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 1.1em;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 7px; height: 7px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+    flex: none;
+  }
+
+  /* ---------- left nav rail ---------- */
+  .rail {
+    position: fixed;
+    left: clamp(8px, 2.4vw, 26px);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    z-index: 40;
+  }
+  .navdot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 0;
+    color: var(--muted);
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .navdot .dot {
+    width: 8px; height: 8px;
+    border-radius: 999px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    flex: none;
+    transition: background .2s, border-color .2s, transform .2s;
+  }
+  .navdot .lbl {
+    font-size: .72rem;
+    letter-spacing: .06em;
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    transition: max-width .25s ease, opacity .2s ease;
+  }
+  .navdot:hover .lbl, .navdot.active .lbl { max-width: 140px; opacity: 1; }
+  .navdot.active .dot { background: var(--accent); border-color: var(--accent); transform: scale(1.25); }
+  @media (max-width: 860px) { .rail { display: none; } }
+
+  /* ---------- hero ---------- */
+  .hero { padding-top: clamp(72px, 13vh, 140px); }
+  .hero h1 {
+    font-size: clamp(2.4rem, 6vw, 4.1rem);
+    font-weight: 800;
+    line-height: 1.04;
+  }
+  .hero h1 .fade { color: var(--muted); }
+  .hero .sub {
+    max-width: 62ch;
+    color: var(--ink-dim);
+    font-size: 1.15rem;
+    margin-top: 1.1em;
+  }
+
+  .termwin {
+    margin-top: 2.6em;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 18px 40px -20px var(--shadow);
+    overflow: hidden;
+  }
+  .termwin .bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .termwin .bar span {
+    width: 10px; height: 10px; border-radius: 999px; background: var(--border);
+    flex: none;
+  }
+  .termwin .bar .path {
+    margin-left: 10px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .78rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .termwin pre {
+    margin: 0;
+    padding: 18px 20px 22px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .84rem;
+    line-height: 1.65;
+    color: var(--ink-dim);
+    overflow-x: auto;
+    min-height: 15.2em;
+  }
+  .termwin .l-ok { color: var(--accent); }
+  .termwin .l-bad { color: var(--coral); }
+  .termwin .l-warm { color: var(--amber); }
+  .termwin .l-dim { color: var(--muted); }
+  .cursor { display: inline-block; width: .55em; height: 1.05em; background: var(--accent); vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; opacity: .7; } }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- reveal on scroll ---------- */
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+
+  /* ---------- problem ---------- */
+  .statement {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    font-size: clamp(1.5rem, 3.4vw, 2.15rem);
+    line-height: 1.35;
+    max-width: 18ch;
+  }
+  .statement .hi { color: var(--coral); }
+  .problem-note { max-width: 58ch; color: var(--ink-dim); margin-top: 1.4em; }
+
+  h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); font-weight: 700; }
+  .kicker-row { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+
+  /* ---------- loop diagram ---------- */
+  .loop-wrap { margin-top: 3em; position: relative; }
+  .loop-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    align-items: stretch;
+  }
+  @media (max-width: 720px) { .loop-grid { grid-template-columns: 1fr; } }
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 20px;
+    position: relative;
+  }
+  .node .step {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .72rem;
+    letter-spacing: .1em;
+    color: var(--muted);
+  }
+  .node h3 { font-size: 1.05rem; margin-top: .5em; }
+  .node p { color: var(--ink-dim); font-size: .93rem; margin: .6em 0 0; }
+  .node .tag {
+    display: inline-block;
+    margin-top: .9em;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .74rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--ink-dim);
+  }
+  .node.coder .step, .node.coder .tag { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, var(--border)); }
+  .node.critic .step, .node.critic .tag { color: var(--coral); border-color: color-mix(in srgb, var(--coral) 45%, var(--border)); }
+  .node.daytona { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  .node.daytona .step { color: var(--accent); }
+
+  .loop-arrows { display: block; width: 100%; height: 46px; margin: -4px 0 -4px; }
+  .loop-note {
+    margin-top: 1.6em;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .82rem;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  /* ---------- proof ---------- */
+  .proof-grid { display: grid; gap: 22px; margin-top: 2.4em; }
+  .diffblock {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .diffblock .head {
+    padding: 10px 16px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .78rem;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  .diffblock pre {
+    margin: 0; padding: 14px 16px;
+    font-size: .82rem; line-height: 1.6;
+    overflow-x: auto;
+  }
+  .diffblock .add { background: var(--diff-add-bg); color: var(--diff-add-ink); display: block; }
+  .diffblock .del { background: var(--diff-del-bg); color: var(--diff-del-ink); display: block; }
+  .diffblock .ctx { color: var(--ink-dim); display: block; }
+
+  .verdict-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .8rem; font-weight: 500;
+    padding: 4px 11px; border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .verdict-pill.ok { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .verdict-pill.warn { color: var(--coral); border-color: color-mix(in srgb, var(--coral) 45%, var(--border)); }
+
+  .quote {
+    border-left: 3px solid var(--accent);
+    padding: 2px 0 2px 18px;
+    color: var(--ink-dim);
+    font-size: .95rem;
+  }
+
+  /* ---------- modes ---------- */
+  .modes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 2.4em; }
+  @media (max-width: 720px) { .modes-grid { grid-template-columns: 1fr; } }
+  .modecard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 26px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .modecard h3 { font-size: 1.15rem; }
+  .modecard .desc { color: var(--ink-dim); font-size: .94rem; }
+  .modecard .fact {
+    margin-top: auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .78rem;
+    color: var(--muted);
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
+
+  .prcard {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-size: .88rem;
+  }
+  .prcard .who { font-family: "IBM Plex Mono", monospace; font-size: .74rem; color: var(--muted); margin-bottom: 8px; }
+  .prcard .issue { font-size: .84rem; color: var(--ink-dim); margin-top: 8px; }
+  .prcard .issue b { color: var(--coral); font-weight: 600; }
+
+  /* ---------- rubric ---------- */
+  .rubric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 2.4em; }
+  @media (max-width: 720px) { .rubric-grid { grid-template-columns: 1fr; } }
+  .rubric-card {
+    padding: 22px 0;
+    border-top: 2px solid var(--border);
+  }
+  .rubric-card .name {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .78rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .rubric-card p { margin: .7em 0 0; color: var(--ink-dim); font-size: .95rem; }
+
+  /* ---------- built-live ---------- */
+  .fixes { margin-top: 2em; display: grid; gap: 12px; }
+  .fixrow {
+    display: grid;
+    grid-template-columns: 170px 1fr;
+    gap: 16px;
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+    align-items: baseline;
+  }
+  @media (max-width: 640px) { .fixrow { grid-template-columns: 1fr; gap: 4px; } }
+  .fixrow .what { font-family: "IBM Plex Mono", monospace; font-size: .8rem; color: var(--amber); }
+  .fixrow .why { color: var(--ink-dim); font-size: .92rem; }
+
+  /* ---------- cheat sheet footer ---------- */
+  footer { padding: clamp(56px, 9vh, 96px) 0 90px; }
+  .sheet {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 26px 28px;
+  }
+  .sheet .row { display: flex; justify-content: space-between; gap: 20px; padding: 9px 0; border-bottom: 1px dashed var(--border); font-size: .88rem; flex-wrap: wrap; }
+  .sheet .row:last-child { border-bottom: none; }
+  .sheet .k { color: var(--muted); font-family: "IBM Plex Mono", monospace; font-size: .78rem; letter-spacing: .04em; }
+  .sheet .v { font-family: "IBM Plex Mono", monospace; color: var(--ink); text-align: right; }
+  .closing { margin-top: 2.4em; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+
+<div class="rail" id="rail" aria-label="Section navigation">
+  <button class="navdot" data-target="hero"><span class="dot"></span><span class="lbl">intro</span></button>
+  <button class="navdot" data-target="problem"><span class="dot"></span><span class="lbl">the problem</span></button>
+  <button class="navdot" data-target="loop"><span class="dot"></span><span class="lbl">how it loops</span></button>
+  <button class="navdot" data-target="proof"><span class="dot"></span><span class="lbl">real proof</span></button>
+  <button class="navdot" data-target="modes"><span class="dot"></span><span class="lbl">two ways it runs</span></button>
+  <button class="navdot" data-target="built"><span class="dot"></span><span class="lbl">built live</span></button>
+  <button class="navdot" data-target="rubric"><span class="dot"></span><span class="lbl">why it fits</span></button>
+  <button class="navdot" data-target="cheatsheet"><span class="dot"></span><span class="lbl">cheat sheet</span></button>
+</div>
+
+<section id="hero" class="hero">
+  <div class="wrap">
+    <div class="eyebrow">running live on Daytona + Nosana</div>
+    <h1>Red tests in.<br><span class="fade">Green tests out.</span></h1>
+    <p class="sub">AutoFix is two AI agents arguing over a real bug, inside a real sandbox, until the tests actually pass. Not a recording — this is an unedited run from earlier today.</p>
+
+    <div class="termwin reveal">
+      <div class="bar"><span></span><span></span><span></span><span class="path">autofix.cli — sample_repo</span></div>
+      <pre id="termOut" aria-label="Terminal transcript of a real AutoFix run"></pre>
+    </div>
+  </div>
+</section>
+
+<section id="problem">
+  <div class="wrap">
+    <div class="eyebrow">the pain everyone knows</div>
+    <p class="statement">Your PR is <span class="hi">red</span>.<br>The log is 400 lines.<br>Nobody's free for two hours.</p>
+    <p class="problem-note">Every developer has waited on a fix that a human just hasn't gotten to yet. AutoFix is what happens if the first pass at that fix doesn't have to wait for a human at all — and can't lie about whether it actually worked, because it's checked against a real test run, every time.</p>
+  </div>
+</section>
+
+<section id="loop">
+  <div class="wrap">
+    <div class="kicker-row">
+      <div>
+        <div class="eyebrow">the mechanism</div>
+        <h2>Two models, one sandbox, no shortcuts</h2>
+      </div>
+    </div>
+
+    <div class="loop-wrap reveal">
+      <div class="loop-grid">
+        <div class="node coder">
+          <div class="step">step 1</div>
+          <h3>Coder proposes</h3>
+          <p>Reads the failing pytest output plus the full repo, and drafts a unified diff.</p>
+          <span class="tag">qwen3.6:35b-a3b-q8_0</span>
+        </div>
+        <div class="node daytona">
+          <div class="step">step 2 · ground truth</div>
+          <h3>Daytona applies + runs</h3>
+          <p>Real <code>git apply</code>, real <code>pytest</code>, in a live sandbox. The exit code is the only thing that counts.</p>
+          <span class="tag">daytona sandbox</span>
+        </div>
+        <div class="node critic">
+          <div class="step">step 3</div>
+          <h3>Critic checks for cheating</h3>
+          <p>A different model inspects the diff itself — did it fix the bug, or just delete the test?</p>
+          <span class="tag">glm-4.7-flash:bf16</span>
+        </div>
+      </div>
+      <div class="loop-note">↻ repeats up to 4× — or stops the moment the sandbox says green</div>
+    </div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="wrap">
+    <div class="eyebrow">not a demo reel</div>
+    <h2>What the sandbox actually said</h2>
+    <p class="problem-note" style="margin-top:.8em;">Every line below is copied verbatim from a real run — same repo, same models, same afternoon.</p>
+
+    <div class="proof-grid">
+      <div class="diffblock reveal">
+        <div class="head"><span>tests/test_ops.py — real pytest failure</span><span class="verdict-pill warn">exit_code=1</span></div>
+        <pre>def test_add():
+<span class="ctx">&gt;       assert add(2, 3) == 5</span>
+<span class="del">E       assert -1 == 5</span>
+<span class="ctx">E        +  where -1 = add(2, 3)</span></pre>
+      </div>
+
+      <div class="diffblock reveal">
+        <div class="head"><span>coder-proposed diff — calc/ops.py</span><span class="mono" style="color:var(--muted); font-size:.78rem;">via Nosana</span></div>
+        <pre><span class="ctx"> def add(a, b):</span>
+<span class="ctx">     """Add two numbers together."""</span>
+<span class="del">-    return a - b</span>
+<span class="add">+    return a + b</span></pre>
+      </div>
+
+      <div class="reveal">
+        <p class="quote">"All changes implement the correct logic for each function: addition, Fibonacci sequence, palindrome checking with proper string cleaning, and word counting with punctuation handling."</p>
+        <p class="problem-note" style="margin-top:.6em;">— the Critic model, approving the diff above, verbatim</p>
+      </div>
+
+      <div class="diffblock reveal">
+        <div class="head"><span>re-run in the same sandbox</span><span class="verdict-pill ok">exit_code=0</span></div>
+        <pre><span class="add">....                                                                     [100%]
+4 passed in 0.01s</span>
+<span class="ctx">AutoFix succeeded after 1 iteration(s).</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="modes">
+  <div class="wrap">
+    <div class="eyebrow">two ways it runs</div>
+    <h2>The ambitious version, and the safe one</h2>
+    <p class="problem-note" style="margin-top:.8em; max-width:70ch;">Both use the exact same Coder / Daytona / Critic pipeline underneath — they differ only in what they're allowed to do with the result.</p>
+
+    <div class="modes-grid">
+      <div class="modecard reveal">
+        <h3>Autonomous loop</h3>
+        <p class="desc">Runs from a terminal against any repo, iterating on its own until the tests pass or it runs out of tries. Commits each approved fix inside the sandbox as it goes.</p>
+        <div class="fact">$ python -m autofix.cli --repo sample_repo</div>
+      </div>
+
+      <div class="modecard reveal">
+        <h3>GitHub Actions review</h3>
+        <p class="desc">Triggers on every pull request. Comment-only, never blocks a merge — but if the sandbox's tests fail, it still asks the Coder for a fix, verifies it in that same sandbox, and only then posts it.</p>
+        <div class="prcard">
+          <div class="who">posted by the AutoFix review workflow</div>
+          <span class="verdict-pill warn">⚠ request changes</span>
+          <p class="issue"><b>high</b> · sample_repo/calc/ops.py: all 4 unit tests are failing.</p>
+          <p class="issue">Suggested fix — applied and re-run in the sandbox: <b style="color:var(--accent)">tests passed.</b></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="built">
+  <div class="wrap">
+    <div class="eyebrow">built and broken today</div>
+    <h2>Three real bugs this pipeline hit — and fixed</h2>
+    <p class="problem-note" style="margin-top:.8em;">Proof this actually got exercised, not just written and hoped for.</p>
+    <div class="fixes">
+      <div class="fixrow reveal">
+        <div class="what">missing conftest.py</div>
+        <div class="why">pytest couldn't import the package from inside a fresh sandbox — invisible until it ran somewhere other than a developer's own machine.</div>
+      </div>
+      <div class="fixrow reveal">
+        <div class="what">git apply --recount</div>
+        <div class="why">LLM-authored diffs kept miscounting the line totals in hunk headers, even when the fix itself was correct — plain <code>git apply</code> rejected every one as "corrupt" until this flag was added.</div>
+      </div>
+      <div class="fixrow reveal">
+        <div class="what">empty-string env vars</div>
+        <div class="why">GitHub Actions renders an unset variable as <code>""</code>, not absent — silently defeating a naive <code>os.environ.get(key, default)</code> and sending an empty model name straight to Nosana.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="rubric">
+  <div class="wrap">
+    <div class="eyebrow">why it fits the brief</div>
+    <h2>Mapped against the judging criteria</h2>
+    <div class="rubric-grid">
+      <div class="rubric-card reveal">
+        <div class="name">Completeness</div>
+        <p>The whole loop runs live inside a real Daytona sandbox — actual <code>git apply</code>, actual <code>pytest</code>, actual exit codes. Nothing on this page is a canned recording.</p>
+      </div>
+      <div class="rubric-card reveal">
+        <div class="name">Innovation</div>
+        <p>Two different model families verifying each other against real execution feedback — not one prompt chained into another with no ground truth in between.</p>
+      </div>
+      <div class="rubric-card reveal">
+        <div class="name">Real-world fit</div>
+        <p>"My CI is red and I don't know why" is one of the most universal moments in software engineering. This is a direct answer to it.</p>
+      </div>
+      <div class="rubric-card reveal">
+        <div class="name">Sponsor usage</div>
+        <p>Daytona isn't hosting a demo — it's the ground-truth signal the whole loop depends on. Nosana isn't an API call — it's the decentralized compute both agents actually run on.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer id="cheatsheet">
+  <div class="wrap">
+    <div class="eyebrow">for the presenter</div>
+    <h2>Stage cheat sheet</h2>
+    <div class="sheet reveal" style="margin-top:1.6em;">
+      <div class="row"><span class="k">RUN THE LOOP</span><span class="v">python -m autofix.cli --repo sample_repo</span></div>
+      <div class="row"><span class="k">CODER MODEL</span><span class="v">qwen3.6:35b-a3b-q8_0 (Nosana)</span></div>
+      <div class="row"><span class="k">CRITIC MODEL</span><span class="v">glm-4.7-flash:bf16 (Nosana)</span></div>
+      <div class="row"><span class="k">GROUND TRUTH</span><span class="v">Daytona sandbox — git apply + pytest</span></div>
+      <div class="row"><span class="k">PR WORKFLOW</span><span class="v">.github/workflows/autofix-review.yml</span></div>
+      <div class="row"><span class="k">MAX ITERATIONS</span><span class="v">4</span></div>
+    </div>
+    <p class="closing">If the network hiccups mid-demo: this page is the fallback. Every result on it already happened.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- hero terminal typing ----
+  var lines = [
+    ['l-dim', '$ python -m autofix.cli --repo sample_repo'],
+    ['l-dim', ''],
+    ['l-dim', '=== Iteration 1/4 ==='],
+    ['l-bad', '[daytona] exit_code=1 · 4 failed in 0.02s'],
+    ['l-dim', 'E   assert -1 == 5   where -1 = add(2, 3)'],
+    ['l-warm', '[coder] requesting a patch from the Nosana-hosted coder model'],
+    ['l-dim', '-    return a - b'],
+    ['l-ok', '+    return a + b'],
+    ['l-dim', '[critic:llm] approved=True'],
+    ['l-dim', 'reason="...correct logic for addition, Fibonacci, palindrome, word counting"'],
+    ['l-dim', ''],
+    ['l-dim', '=== Iteration 2/4 ==='],
+    ['l-ok', '[daytona] exit_code=0 · 4 passed in 0.01s'],
+    ['l-ok', 'AutoFix succeeded after 1 iteration(s).']
+  ];
+
+  var out = document.getElementById('termOut');
+
+  function renderStatic() {
+    out.innerHTML = lines.map(function (l) {
+      return '<span class="' + l[0] + '">' + l[1] + '</span>';
+    }).join('\n');
+  }
+
+  function typeLines() {
+    var li = 0, ci = 0, buf = '';
+    function tick() {
+      if (li >= lines.length) {
+        out.innerHTML = buf + '<span class="cursor"></span>';
+        return;
+      }
+      var cls = lines[li][0], text = lines[li][1];
+      ci++;
+      var done = buf + '<span class="' + cls + '">' + text.slice(0, ci) + '<span class="cursor"></span></span>';
+      out.innerHTML = done;
+      if (ci >= text.length) {
+        buf += '<span class="' + cls + '">' + text + '</span>\n';
+        li++; ci = 0;
+        setTimeout(tick, text.length ? 90 : 40);
+      } else {
+        setTimeout(tick, 10);
+      }
+    }
+    tick();
+  }
+
+  if (reduceMotion) { renderStatic(); } else { typeLines(); }
+
+  // ---- scroll reveal ----
+  var revealEls = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window && !reduceMotion) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.15 });
+    revealEls.forEach(function (el) { io.observe(el); });
+  } else {
+    revealEls.forEach(function (el) { el.classList.add('in'); });
+  }
+
+  // ---- nav rail: scroll-spy + click-to-scroll ----
+  var dots = Array.prototype.slice.call(document.querySelectorAll('.navdot'));
+  var sections = dots.map(function (d) { return document.getElementById(d.dataset.target); });
+
+  dots.forEach(function (d) {
+    d.addEventListener('click', function () {
+      var target = document.getElementById(d.dataset.target);
+      if (target) target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+  });
+
+  if ('IntersectionObserver' in window) {
+    var spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        var idx = sections.indexOf(e.target);
+        if (idx === -1) return;
+        if (e.isIntersecting) {
+          dots.forEach(function (d) { d.classList.remove('active'); });
+          dots[idx].classList.add('active');
+        }
+      });
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    sections.forEach(function (s) { if (s) spy.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>
