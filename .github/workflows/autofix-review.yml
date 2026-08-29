@@ -1,9 +1,10 @@
 name: AutoFix PR Review
 
-# Comment-only, advisory review: never fails/blocks the PR on the model's
-# verdict. Runs a real test (and optional lint) pass inside a Daytona
-# sandbox, then asks a Nosana-hosted model for a structured review of the
-# diff plus that sandbox output, and posts it as a PR comment.
+# Runs a real test (and optional lint) pass inside a Daytona sandbox, asks a
+# Nosana-hosted model for a structured review of the diff plus that sandbox
+# output, and posts it as a PR comment. Fails this check (non-zero exit) if
+# the verdict is "request changes" - wire up branch protection on this
+# check if you want it to actually block merging.
 on:
   pull_request:
     types: [opened, synchronize, reopened]
