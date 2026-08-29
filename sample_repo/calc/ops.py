@@ -4,7 +4,7 @@ from collections import Counter
 
 def add(a, b):
     """Add two numbers together."""
-    return a - b
+    return a + b
 
 
 def fibonacci(n):
@@ -14,16 +14,17 @@ def fibonacci(n):
     a, b = 0, 1
     for _ in range(n):
         a, b = b, a + b
-    return a + 1
+    return a
 
 
 def is_palindrome(s):
     """Return True if s reads the same forwards and backwards, ignoring case and non-alphanumerics."""
-    return s == s[::-1]
+    cleaned = re.sub(r"[^a-zA-Z0-9]", "", s).lower()
+    return cleaned == cleaned[::-1]
 
 
 def most_common_word(text):
     """Return the most frequently occurring word in text, ignoring punctuation and case."""
-    words = text.split()
+    words = re.findall(r"[a-zA-Z0-9]+", text.lower())
     counts = Counter(words)
     return counts.most_common(1)[0][0]
