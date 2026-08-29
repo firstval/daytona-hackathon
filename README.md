@@ -74,6 +74,40 @@ test command to try it on something else:
 .venv/Scripts/python -m autofix.cli --repo path/to/other/repo --test-cmd "pytest -q"
 ```
 
+## GitHub Actions: PR review (comment-only, advisory)
+
+A lighter alternative to the full loop above lives in
+[`.github/workflows/autofix-review.yml`](.github/workflows/autofix-review.yml),
+backed by [`autofix/pr_review.py`](autofix/pr_review.py). It triggers on
+`pull_request` and:
+
+1. Fetches the PR diff (`gh pr diff`).
+2. Runs the test command (and an optional lint command) against the PR's
+   code in a real Daytona sandbox.
+3. If tests fail, asks the Coder model for a patch, applies it, and
+   re-runs the tests **in that same sandbox** — so any suggested fix posted
+   to the PR is either confirmed passing or honestly labeled as unverified,
+   never just asserted.
+4. Sends the diff + sandbox output to the Critic model for a structured
+   JSON review (summary, issues, verdict) and posts it as a PR comment via
+   `gh pr comment`.
+
+It never fails the check or blocks merging on the model's verdict — purely
+advisory, by design.
+
+**Setup:** push this repo to GitHub, then add these **repo secrets**
+(Settings → Secrets and variables → Actions → *Secrets*):
+`DAYTONA_API_KEY`, `NOSANA_CODER_BASE_URL`, `NOSANA_CODER_API_KEY`,
+`NOSANA_CRITIC_BASE_URL`, `NOSANA_CRITIC_API_KEY`. Optionally add **repo
+variables** (same page, *Variables* tab) to override the defaults baked
+into `config.py`: `DAYTONA_API_URL`, `DAYTONA_TARGET`,
+`NOSANA_CODER_MODEL`, `NOSANA_CRITIC_MODEL`. No extra credential is needed
+for posting the comment — the workflow uses the automatic `GITHUB_TOKEN`.
+
+The workflow is currently pointed at `sample_repo/` (`REPO_DIR:
+sample_repo` in the workflow file) as the demo target; point it at `.`
+instead if you want it to review the whole repo.
+
 ## Demo tips
 
 - Run with the terminal visible — every iteration prints the failing output,
