@@ -18,8 +18,8 @@ sandbox until it's green, with a decentralized model hosted on
 ```
 
 1. **Coder agent** gets the failing pytest output + full repo contents, and
-   proposes a unified diff via a Qwen2.5-Coder model hosted as an inference
-   job on Nosana.
+   proposes a unified diff via a Qwen 3.6 model hosted as an inference job
+   on Nosana.
 2. **Daytona sandbox** is the ground truth: it applies the diff with
    `git apply` and re-runs the tests for real — no mocked results.
 3. **Critic agent** inspects the diff for cheating (deleted/weakened tests,
