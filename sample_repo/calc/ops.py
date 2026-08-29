@@ -1,6 +1,8 @@
 import re
 from collections import Counter
 
+# Small arithmetic/string helpers used across the calc package.
+
 
 def add(a, b):
     """Add two numbers together."""
